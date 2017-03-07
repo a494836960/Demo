@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+</head>
+<body>
+	<script>
+
+		var obj = {
+			name:"123",
+			fc:function(){
+				console.log("fc")
+			},
+			date:new Date(),
+			hobj:{
+				id:1,
+				sobj:{
+					cd:2,
+					bobj:{df:3}
+				}
+			},
+			arr:[1,2,3],
+			arrs:[{id:2},{cd:213}]
+		}
+		
+		var sobj = clone(obj)
+
+		function clone(target,obj){
+			obj=obj||{};
+			var type ="",_this;
+			for(item in target){
+				_this= target[item];
+				type = typeof _this;
+				
+				switch(type){
+					case "string":
+					case "number":
+						obj[item] = _this;
+					break;
+
+					case "object": //特殊处理array date，
+						if(_this instanceof Date){
+							obj[item]= new Date(_this.getTime());
+						}else if(_this instanceof Array){
+							obj[item]=[];
+							for(var i=0,len=_this.length;i<len;i++){
+								if(typeof _this[i] !='object'){
+									obj[item][i]=_this[i];
+								}else{
+									obj[item]=arguments.callee(_this,obj[item]);
+								}
+							}
+						}else{
+							obj[item]=arguments.callee(_this,obj[item]);
+						}
+					break;
+
+					case "function":
+						obj[item] = target[item];
+					break;
+					default:
+					console.log(type);
+				}
+			}
+			return obj;
+		}
+	</script>
+</body>
+</html>
