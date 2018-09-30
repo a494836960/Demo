@@ -26,7 +26,24 @@ let Reg = {
 }
 
 let Util = {
-
+    // 注入js文件
+    injectScript:function (file, node) {
+      var th = document.getElementsByTagName(node)[0];
+      var s = document.createElement('script');
+      s.setAttribute('type', 'text/javascript');
+      s.setAttribute('charset', "UTF-8");
+      s.setAttribute('src', file);
+      th.appendChild(s);
+    },
+    //注入js 代码
+    injectScriptCode:function (code, node) {
+      var th = document.getElementsByTagName(node)[0];
+      var script = document.createElement('script');
+      script.setAttribute('type', 'text/javascript');
+      script.setAttribute('language', 'JavaScript');
+      script.textContent = code;
+      th.appendChild(script);
+    },
     /**
      * input onChange 修改值必须和name 相同
      *  example: onChange={Util.standardInputChange.bind(this}
