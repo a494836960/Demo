@@ -1,7 +1,8 @@
 import moment from 'moment';
 import {STATUS_CODE} from 'vendor/statusConstant'
+
 let config = {
-dateFormat: 'yyyy-MM-dd HH:mm:ss'
+    dateFormat: 'yyyy-MM-dd HH:mm:ss'
 }
 const TOKEN_EXPIRE = 10000;
 const INVALID_TOKEN = 10001;
@@ -26,23 +27,39 @@ let Reg = {
 }
 
 let Util = {
+    //节流函数
+    _throttle: function (fn, delay, least) {
+        var timeout = null,
+            startTime = new Date();
+        fn();
+        return function () {
+            var curTime = new Date();
+            clearTimeout(timeout);
+            if (curTime - startTime >= least) {
+                fn();
+                startTime = curTime;
+            } else {
+                timeout = setTimeout(fn, delay);
+            }
+        }
+    },
     // 注入js文件
-    injectScript:function (file, node) {
-      var th = document.getElementsByTagName(node)[0];
-      var s = document.createElement('script');
-      s.setAttribute('type', 'text/javascript');
-      s.setAttribute('charset', "UTF-8");
-      s.setAttribute('src', file);
-      th.appendChild(s);
+    injectScript: function (file, node) {
+        var th = document.getElementsByTagName(node)[0];
+        var s = document.createElement('script');
+        s.setAttribute('type', 'text/javascript');
+        s.setAttribute('charset', "UTF-8");
+        s.setAttribute('src', file);
+        th.appendChild(s);
     },
     //注入js 代码
-    injectScriptCode:function (code, node) {
-      var th = document.getElementsByTagName(node)[0];
-      var script = document.createElement('script');
-      script.setAttribute('type', 'text/javascript');
-      script.setAttribute('language', 'JavaScript');
-      script.textContent = code;
-      th.appendChild(script);
+    injectScriptCode: function (code, node) {
+        var th = document.getElementsByTagName(node)[0];
+        var script = document.createElement('script');
+        script.setAttribute('type', 'text/javascript');
+        script.setAttribute('language', 'JavaScript');
+        script.textContent = code;
+        th.appendChild(script);
     },
     /**
      * input onChange 修改值必须和name 相同
@@ -658,9 +675,7 @@ let Util = {
 }
 
 let SS = {
-    constant: {
-        
-    },
+    constant: {},
     setItem: function (key, value) {
         value = typeof value == 'string' ? value : JSON.stringify(value);
         sessionStorage.setItem(key, value);
@@ -682,9 +697,7 @@ let SS = {
 }
 
 let LS = {
-    constant: {
-       
-    },
+    constant: {},
     setItem: function (key, value) {
         value = typeof value == 'string' ? value : JSON.stringify(value);
         localStorage.setItem(key, value);
