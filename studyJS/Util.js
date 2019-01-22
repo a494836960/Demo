@@ -1,11 +1,7 @@
+import config, {env} from './config.js'
 import moment from 'moment';
-import {STATUS_CODE} from 'vendor/statusConstant'
 
-let config = {
-    dateFormat: 'yyyy-MM-dd HH:mm:ss'
-}
-const TOKEN_EXPIRE = 10000;
-const INVALID_TOKEN = 10001;
+const TOKEN_EXPIRED_DATE = 2 * 60 * 1000;
 let pageObj = null;
 
 function setPage(obj) {
@@ -23,44 +19,15 @@ let Reg = {
     bankFormat: /(\w{4})(?=.)/g,
     mobile: /^[1-9]\d{10}$/,
     money: /^\d+(\.\d+)?$/,
-    webSite: /^(http|https):\/\//
+    webSite: /^(http|https):\/\//,
+    ali: /(^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$)|(^[a-z0-9_\u4e00-\u9fa5]+$)|(^[1-9]\d{10}$)/,
+    china: /[\u4e00-\u9fa5]/g,
+    nonChina: /[^\u4e00-\u9fa5]/g,
+    taobao: /^[a-z0-9_\u4e00-\u9fa5]+$/,
 }
 
 let Util = {
-    //节流函数
-    _throttle: function (fn, delay, least) {
-        var timeout = null,
-            startTime = new Date();
-        fn();
-        return function () {
-            var curTime = new Date();
-            clearTimeout(timeout);
-            if (curTime - startTime >= least) {
-                fn();
-                startTime = curTime;
-            } else {
-                timeout = setTimeout(fn, delay);
-            }
-        }
-    },
-    // 注入js文件
-    injectScript: function (file, node) {
-        var th = document.getElementsByTagName(node)[0];
-        var s = document.createElement('script');
-        s.setAttribute('type', 'text/javascript');
-        s.setAttribute('charset', "UTF-8");
-        s.setAttribute('src', file);
-        th.appendChild(s);
-    },
-    //注入js 代码
-    injectScriptCode: function (code, node) {
-        var th = document.getElementsByTagName(node)[0];
-        var script = document.createElement('script');
-        script.setAttribute('type', 'text/javascript');
-        script.setAttribute('language', 'JavaScript');
-        script.textContent = code;
-        th.appendChild(script);
-    },
+
     /**
      * input onChange 修改值必须和name 相同
      *  example: onChange={Util.standardInputChange.bind(this}
@@ -128,23 +95,53 @@ let Util = {
             [key]: value
         })
     },
+
+    //刷新token
+    refreshToken() {
+        let refreshToken = LS.getItem(LS.constant.REFRESH_TOKEN);
+    },
+
     loadingCount: 0, //用来计数 loading
+
+    /*
+    *  刷新token处理
+    *   1.如果没有登录时间就不检查，
+    *   2.当前时间小于 登录时间 + 过期时间 保存当前请求，然后去更新token
+    * */
     fetch({data, method = "POST", url, urlType = '', contentType = '', tokenType, isLoading = true}) {
-        let path = "/" + url;
-        let token = LS.getItem(LS.constant.TOKEN);
+        /*let tokenDate = LS.getItem(LS.constant.LOGIN_DATE);
+        if (!Util.isEmpty(tokenDate)) {
+            let curDate = +new Date();
+            if (curDate < tokenDate + TOKEN_EXPIRED_DATE) {
+                return refreshToken().then(res=>{
+                    return Util.ajax(arguments[0]);
+                })
+            }
+        } else {*/
+        return Util.ajax(arguments[0]);
+        /* }*/
+
+    },
+
+    ajax({data, method = "POST", url, urlType = '', contentType = '', tokenType, isLoading = true}) {
+        let path = config.baseUrl + url;
         let params = {
             method: method.toUpperCase(),
-            //credentials: "include",
             headers: {
                 'Content-Type': 'application/json; charset=UTF-8',
             }
         };
 
         for (let key in data) {
-            data[key] = Util.replaceEmoji(data[key]);
+            if (!Util.isEmpty(data[key])) {
+                data[key] = Util.replaceEmoji(data[key]);
+                data[key] = Util.html_encode(data[key]);
+            } else {
+                delete data[key];
+            }
         }
 
-        if (params.method == 'POST' || params.method == "POST") {
+        if (params.method == 'POST') {
             params.body = JSON.stringify(data);
         } else if (params.method == "GET") {
             let para = Util.json2Params(data);
@@ -177,7 +174,6 @@ let Util = {
             pageObj.loading(true);
         }
 
-
         return fetch(path, params).then((response) => {
             if (isLoading) {
                 Util.loadingCount -= 1;
@@ -188,14 +184,6 @@ let Util = {
 
             let res = response.json();
             let date = response.headers.get('date');
-            if (response.status === 401) {
-                pageObj.tips.visible({
-                    content: "请重新登录",
-                    type: "error",
-                    duration: '2000'
-                });
-                pageObj.props.router.push('/login');
-            }
 
             return res.then(res => {
                 if (!(res instanceof Array)) {
@@ -204,17 +192,17 @@ let Util = {
                 return res;
             });
         }).then(res => {
-            if (res.code == STATUS_CODE.EXPIRED || res.code == STATUS_CODE.INVALID) {
+            if (res.status == STATUS_CODE.EXPIRED || res.status == STATUS_CODE.INVALID) {
                 pageObj.tips.visible({
                     content: "请重新登录",
                     type: "error",
                     duration: '2000'
                 });
                 pageObj.props.router.push('/login');
-            } else if (!res.success) { //统一的错误管理
+            } else if (res.status !== 200 && config.env.isPC) { //统一的错误管理
 
                 pageObj.tips.visible({
-                    content: res.msg,
+                    content: res.message,
                     type: "error",
                     duration: '2000'
                 });
@@ -225,7 +213,7 @@ let Util = {
 
     //下载文件
     loadFile({data, method = "POST", url, urlType = '', contentType = '', fileType = '.xlsx', file}) {
-        let baseUrl = "/";
+        let baseUrl = config.baseUrl;
         let para = Util.json2Params(data);
         url += para;
         let token = LS.getItem(LS.constant.TOKEN);
@@ -244,7 +232,7 @@ let Util = {
                 return res.blob().then(blob => {
                     var a = document.createElement('a');
                     var url = window.URL.createObjectURL(blob);
-                    let fileName = res.headers.get('Content-Disposition');
+                    let fileName = '';//res.headers.get('Content-Disposition');
                     fileName = Util.isEmpty(fileName) && !Util.isEmpty(file) ? file + fileType : fileName;
                     fileName = Util.isEmpty(fileName) ? `${Math.floor(Math.random() * 100)}${fileType}` : fileName;
                     a.href = url;
@@ -257,7 +245,7 @@ let Util = {
             } else {
                 return res.json().then(res => {
                     pageObj.tips.visible({
-                        content: res.msg,
+                        content: res.message,
                         type: 'error',
                     });
                 });
@@ -267,7 +255,6 @@ let Util = {
 
     //json 格式转 url params结构
     json2Params(json) {
-
         if (typeof json !== 'object') {
             return "";
         }
@@ -281,9 +268,20 @@ let Util = {
         return params;
     },
 
-    moneyFormat(str = "") {
+    searchBox(params, cb) {
+        this.setState({
+            curPage: 1,
+        }, () => {
+            cb && cb(params);
+        })
+    },
+
+    moneyFormat(str = "", unit) {
+        if (unit === 'f') {
+            str = Util.accDiv(Number(str), 100);
+        }
         str += '';
-        str = str.replace(/[^\d\.]/g, '');
+        str = str.replace(/[^-+\d\.]/g, '');
         str = Number(str).toFixed(2);
         return str ? str.toString().replace(/(\d)(?=(\d{3})+\.)/g, '$1,') : '';
     },
@@ -301,7 +299,7 @@ let Util = {
         s = s.replace(/>/g, "&gt;");
         s = s.replace(/\'/g, "&#39;");
         s = s.replace(/\"/g, "&quot;");
-        s = s.replace(/\n/g, "<br>");
+        s = s.replace(/\n/g, " ");
         return s;
     },
     checkAuth(auth) { //权限检查
@@ -360,7 +358,6 @@ let Util = {
                 listHtml[key] = menuListHtml[key]
             }
         }
-
         return listHtml;
     },
     /**
@@ -403,12 +400,12 @@ let Util = {
     handleResponseResult(params) {
         let {res, successCB, failCB, showTips, successMsg, errorMsg} = params;
         let msg = '', type = '';
-        if (res.success) {
-            msg = res.msg || successMsg;
+        if (res.status === 200) {
+            msg = res.message || successMsg;
             type = 'success';
             successCB && successCB();
         } else {
-            msg = res.msg || errorMsg;
+            msg = res.message || errorMsg || '操作失败';
             type = 'error';
             failCB && failCB()
         }
@@ -424,7 +421,7 @@ let Util = {
             if (file.response.success) {
                 cb && cb(file.response.result);
             } else {
-                this.context.showTips({text: file.response.msg, type: 'error'});
+                this.context.showTips({text: file.response.message, type: 'error'});
             }
 
             this.setState({
@@ -435,7 +432,7 @@ let Util = {
                 [name]: true
             });
         } else if (info.file.status === 'error') {
-            this.context.showTips({text: file.response.msg, type: 'error'});
+            this.context.showTips({text: file.response.message, type: 'error'});
             this.setState({
                 [name]: false
             })
@@ -463,6 +460,14 @@ let Util = {
             });
         }
     },
+    goLink(url, state) {
+        if (state) {
+            this.props.router.push(url);
+        } else {
+            this.props.router.push({pathname: url, state});
+        }
+
+    },
     //go 404
     go404() {
         if (pageObj) {
@@ -476,10 +481,12 @@ let Util = {
         let type = typeof str;
         switch (type) {
             case 'object': //如果是对象用stringify转成str 排除 {} 和 null
-                let template = JSON.stringify(str);
-                return template === 'null' || template === '{}' ? true : false;
-            case 'array':
-                return str.length > 0 ? false : true;
+                if (str instanceof Array) {
+                    return str.length > 0 ? false : true;
+                } else {
+                    let template = JSON.stringify(str);
+                    return template === 'null' || template === '{}' ? true : false;
+                }
             default: //其他
                 str = str + '';
                 if (str.length === 0 || str == 'undefined' || str == 'null') {
@@ -545,7 +552,7 @@ let Util = {
     },
     //后台费率转换成前台展示的值 多位小数 * 100 不精确。 需要 10000 勿改
     rateFormat(rate) {
-        return Util.formatFloat((rate * 10000 / 100), 2) + '%';
+        return Util.formatFloat((rate * 10000 / 100), 4) + '%';
     },
     fen2yuan(fen) { //分转换成元保留2位小数
         return (parseFloat(fen) / 100)
@@ -620,23 +627,32 @@ let Util = {
      * 提现手续费计算方式 @params withdrawLimit 单笔最高限额
      */
     getWithdrawAmount(dataSource, withdrawLimit, feeRate) {
+        withdrawLimit = withdrawLimit + "";
         let limit = parseFloat(withdrawLimit.replace(/,/g, ''));
         let amount = 0;
         //手续费
-        let rate = feeRate / 100;
         let fee = 0;
         dataSource.map(item => {
+            let count = 0;
             let money = parseFloat(item.moneyYuan || 0);
             amount += money;
-            let len = Math.ceil(money / limit);
-            if (feeRate / 100 * limit > 2) { //如果手续费最低2元
-                fee += feeRate / 100 * limit * (len - 1);
-                let lastFee = feeRate / 100 * (money % limit == 0 ? limit : money % limit);
-                fee += lastFee > 2 ? lastFee : 2;
-            } else {
-                fee += 2 * len;
-            }
+            let lastMoney = 0;
+            let newMoney = 0;
+            let flag = true;
+            do {
+                if ((money - newMoney) >= (limit - count)) { //提现金额小于限额
+                    lastMoney = limit - count; //当前要用来计算金额的钱
+                    newMoney += lastMoney; //剩余金额
+                    count = count >= limit ? (limit - 1) : count + 1;
+                } else {
+                    lastMoney = money - newMoney;
+                    flag = false
+                }
+                let lastFee = (feeRate / 100) * lastMoney;
+                fee += lastFee != 0 ? (lastFee > 2 ? lastFee : 2) : 0;
+            } while (flag);
         });
+
         return {
             amount: amount,
             amountFee: fee
@@ -646,17 +662,17 @@ let Util = {
     * Select 过滤筛选
     * */
     filterOption(value, option) {
-        if (option.props && (value === option.key + "" || option.props.children.indexOf(value) > -1 || option.props.children.indexOf(value) > -1)) {
+        if (option.props && (value === option.key + "" || (option.props.children && option.props.children.indexOf(value) > -1))) {
             return true;
         }
     },
-    /**
-     * 修改pageSize
-     */
-    changePageSize(e, cb) {
-        this.setState({pageSize: e}, () => {
-            cb && cb(1);
-        });
+    //修改分页
+    changePageSize(name, e, cb) {
+        this.setState({
+            [name]: e
+        }, () => {
+            cb && cb(this.state.repeat);
+        })
     },
     getRealPath() {
         let path = '';
@@ -671,11 +687,69 @@ let Util = {
         }
 
         return key;
-    }
+    },
+    resetRem() { //重置rem
+        var docEl = document.documentElement;
+        var clientWidth = docEl.clientWidth;
+        if (!clientWidth) return;
+        if (clientWidth >= 750) {
+            docEl.style.fontSize = '100px'; //1rem  = 100px
+        } else {
+            docEl.style.fontSize = 100 * (clientWidth / 750) + 'px';
+        }
+    },
+
+    accMul: function (arg1, arg2) {
+        var m = 0, s1 = arg1.toString(), s2 = arg2.toString();
+        try {
+            m += s1.split(".")[1].length
+        } catch (e) {
+        }
+        try {
+            m += s2.split(".")[1].length
+        } catch (e) {
+        }
+        return Number(s1.replace(".", "")) * Number(s2.replace(".", "")) / Math.pow(10, m)
+    },
+    accDiv: function (arg1, arg2) {
+        var t1 = 0, t2 = 0, r1, r2;
+        try {
+            t1 = arg1.toString().split(".")[1].length
+        } catch (e) {
+        }
+        try {
+            t2 = arg2.toString().split(".")[1].length
+        } catch (e) {
+        }
+        r1 = Number(arg1.toString().replace(".", ""))
+        r2 = Number(arg2.toString().replace(".", ""))
+        return (r1 / r2) * Math.pow(10, t2 - t1);
+    },
+
+
 }
 
 let SS = {
-    constant: {},
+    constant: {
+        CHANNEL_T1_SETTLE: 'CHANNEL_T1_SETTLE',
+        AUTH_LIST: "AUTH_LIST",
+        WALLET_TABS: 'WALLET_TABS', //缓存钱包 WALLET_TABS
+        PAYMENT_TABS: 'PAYMENT_TABS', //缓存代付审核 PAYMENT_TABS
+
+        MERCHANT_T1_TABS: 'MERCHANT_T1_TABS', //商户T1结算
+        WALLET_PLATFORM_PAGE: 'WALLET_PLATFORM_PAGE', //平台提现翻页记录
+
+        PAYMENT_MERCHANT_PAGE: 'PAYMENT_AUDIT_MERCHANT_PAGE', //保存代付商户代付审核翻页记录
+        PAYMENT_AGENT_PAGE: 'PAYMENT_AUDIT_AGENT_PAGE', //保存代付代理商代付审核翻页记录
+        PAYMENT_PLATFORM_PAGE: 'PAYMENT_PLATFORM_PAGE', //保存代付 平台 代付审核翻页记录
+
+        MERCHANT_LIST_PAGE: 'MERCHANT_LIST_PAGE', //保存商户列表翻页记录
+        AG_MERCHANT_LIST_PAGE: 'AG_MERCHANT_LIST_PAGE', //保存商户代理列表翻页记录
+        AG_CHANNEL_LIST_PAGE: 'AG_CHANNEL_LIST_PAGE', //保存通道代理列表翻页记录
+
+        WALLET_MERCHANT_PAGE: 'WALLET_MERCHANT_PAGE', //钱包商户列表翻页记录
+        WALLET_AGENT_PAGE: 'WALLET_AGENT_PAGE', //钱包代理列表翻页记录
+    },
     setItem: function (key, value) {
         value = typeof value == 'string' ? value : JSON.stringify(value);
         sessionStorage.setItem(key, value);
@@ -697,7 +771,19 @@ let SS = {
 }
 
 let LS = {
-    constant: {},
+    constant: {
+        LOGIN_DATE: 'LOGIN_DATE', //保存用户登录时间
+        USER: "USER", //保存的用户名
+        REMEMBER_USER: "REMEMBER_USER", //是否记录密码
+        TOKEN: "TOKEN", // token
+        REFRESH_TOKEN: 'REFRESH_TOKEN', //刷新token
+        USER_INFO: "USER_INFO",
+        AUTH_MENU: "AUTH_MENU", //权限菜单
+        AUTH_CODE: "AUTH_CODE", //权限CODE
+        SYSTEM_TYPE: 'SYSTEM_TYPE',
+        PAYMENT_LIST: 'PAYMENT_LIST', //批量支付本地缓存
+        CAPTCHA_TOKEN: 'CAPTCHA_TOKEN'
+    },
     setItem: function (key, value) {
         value = typeof value == 'string' ? value : JSON.stringify(value);
         localStorage.setItem(key, value);
@@ -733,7 +819,55 @@ const fieldsValidate = {
     }],
     withdrawPassword: [{
         min: 6, message: '提现密码限定6~20个字符'
-    }, {max: 20, message: '提现密码限定6~20个字符'}, {pattern: /[^\s]/g, message: '提现密码不能带有空格'}]
+    }, {max: 20, message: '提现密码限定6~20个字符'}, {pattern: /[^\s]/g, message: '提现密码不能带有空格'}],
+    businessLicenseNo: [{
+        pattern: /^[a-zA-Z\d]*$/,
+        message: '请输入正确的营业执照'
+    }],
+    legalPeopleCard: [{
+        validator: (rule, value, callback) => {
+            if (value && value.length != 18) {
+                callback('请输入正确的身份证号码');
+            }
+            callback();
+        }
+    }],
+    name: [{
+        validator: (rule, value, callback) => {
+            if (Util.isEmpty(value)) {
+                callback();
+                return;
+            }
+
+            let cn = value.replace(Reg.nonChina, '');
+            let len = cn.length;
+            len += value.length;
+            if (len < 2 || len > 20) {
+                callback('请输入合法的名称');
+            } else {
+                callback();
+            }
+        }
+    }],
+    fnMatchNumber: ({max, min, maxMessage, minMessage}) => {
+        return {
+            validator: (rule, value, callback) => {
+                if (Util.isEmpty(value)) {
+                    callback();
+                    return;
+                }
+
+                if (!Util.isEmpty(max) && parseFloat(value) > max) {
+                    callback(maxMessage);
+                }
+
+                if (!Util.isEmpty(min) && parseFloat(value) <= min) {
+                    callback(minMessage);
+                }
+                callback();
+            }
+        }
+    }
 }
 
 //所有按钮权限代码
