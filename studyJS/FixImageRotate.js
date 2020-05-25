@@ -19,7 +19,7 @@ import EXIF from 'exif-js';
   // 通过EXIF校正图片   file: File
   public fixImageRotate(file:any){
     let deg = {
-      normal: 0,
+      normal: 1,
       reversal: 3, // 180 度
       clockwise: 6, // 顺时针
       anticlockwise:8, // 逆时针
