@@ -27,7 +27,25 @@ let Reg = {
 }
 
 let Util = {
+      //格式化时间, 返回的值最大为 N天N小时N分支
+    formatDay:function(sec) {
+        let days = Math.floor(sec / 60 / 60 / 24);
+        let hours = Math.floor((sec - (days * 60 * 60 * 24)) / 60 / 60);
+        let minutes = Math.floor((sec - (days * 60 * 60 * 24) - (hours * 60 * 60)) / 60);
+        let seconds = Math.floor((sec - (days * 60 * 60 * 24) - (hours * 60 * 60) - (minutes * 60)));
 
+        switch (true) {
+          case sec < 60:
+            return seconds + '秒'
+          case sec <= 60 * 60:
+            return `${minutes}:${seconds}`;
+          case sec < 60 * 60 * 24:
+            return `${hours}:${minutes}:${seconds}`;
+          default:
+            return `${days}天${hours}:${minutes}:${seconds}`;
+        }
+      },
+    
     /**
      * input onChange 修改值必须和name 相同
      *  example: onChange={Util.standardInputChange.bind(this}
