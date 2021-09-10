@@ -11,7 +11,9 @@ function setPage(obj) {
 function getPageObj() {
     return pageObj;
 }
-
+function formatMoney (money) {
+    return money.replace(/(?<!\.\d*)(\d)(?=(\d{3})+($|\.))/g, '$1,')
+}
 let Reg = {
     number: /^\d+$/,
     nonNum: /^\D+$/g,
